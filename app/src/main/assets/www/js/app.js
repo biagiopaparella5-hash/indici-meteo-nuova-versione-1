@@ -68,7 +68,7 @@
       }
       throw new Error('nessuna corsa trovata negli ultimi 8 giorni');
     } },
-    mjoFc: { ttl: 6 * H, src: SRC.mjoGefsPages, load: async () => {
+    mjoFc2: { ttl: 3 * H, src: SRC.mjoGefsPages, load: async () => {
       const find = async (pages, code) => {
         for (const page of pages) {
           try {
@@ -79,7 +79,11 @@
         }
         return null;
       };
-      const [gefs, ecmf] = await Promise.all([find(SRC.mjoGefsPages, 'NCPE'), find(SRC.mjoEcmfPages, 'ECMF')]);
+      // prima gli indirizzi diretti delle immagini del CPC (stesso schema dell'ECMWF: /mjo/img/<CODICE>.png)
+      const IMG = 'https://www.cpc.ncep.noaa.gov/products/precip/mjo/img/';
+      const firstOk = async list => { for (const u of list) if (await imgOk(u + '?t=' + Date.now())) return u; return null; };
+      const [g0, e0] = await Promise.all([firstOk([IMG + 'NCPE.png', IMG + 'NCPE.gif', IMG + 'GEFS.png', IMG + 'GMON.png']), firstOk([IMG + 'ECMF.png'])]);
+      const [gefs, ecmf] = await Promise.all([g0 || find(SRC.mjoGefsPages, 'NCPE'), e0 || find(SRC.mjoEcmfPages, 'ECMF')]);
       if (!gefs && !ecmf) throw new Error('immagini di previsione non trovate');
       return { gefs, ecmf };
     } },
@@ -242,7 +246,7 @@
     { id: 'pna', title: 'PNA', sub: 'Pacifico – Nord America', ds: ['teleDaily', 'fc_pna'] },
     { id: 'nam', title: 'NAM', sub: 'Modo anulare nord · GFS e GEOS', ds: ['namDate'] },
     { id: 'vortex', title: 'Vortice polare', sub: 'Vento 10 hPa 60°N · probabilità SSW', ds: ['wic'] },
-    { id: 'mjo', title: 'MJO', sub: 'Madden-Julian (RMM)', ds: ['rmm', 'mjoFc'] },
+    { id: 'mjo', title: 'MJO', sub: 'Madden-Julian (RMM)', ds: ['rmm', 'mjoFc2'] },
     { id: 'enso', title: 'ENSO', sub: 'El Niño / La Niña', ds: ['oni', 'nino'] },
     { id: 'monthly', title: 'EA · SCA · EA/WR', sub: 'Altri pattern (mensili)', ds: ['teleMonthly'] },
     { id: 'qbo', title: 'QBO', sub: 'Quasi-Biennale 30 hPa', ds: ['qbo'] },
@@ -478,14 +482,14 @@
     nao: dailyIndexDetail('nao'), ao: dailyIndexDetail('ao'), pna: dailyIndexDetail('pna'), aao: dailyIndexDetail('aao'),
     mjo(el, d) {
       const r = d.rmm && d.rmm.data;
-      const fc = d.mjoFc && d.mjoFc.data;
+      const fc = d.mjoFc2 && d.mjoFc2.data;
       if (r && r.length) {
         const l = last(r);
         el.innerHTML = kv([['Osservato al', dDay(l.x)], ['Fase', '<b>' + l.phase + '</b>'], ['Ampiezza', f2(l.amp) + (l.amp >= 1 ? ' (attiva)' : ' (debole)')], ['RMM1 / RMM2', f2(l.rmm1) + ' / ' + f2(l.rmm2)]]);
       } else el.innerHTML = '<div class="err">Osservazioni non disponibili' + (d.rmm && d.rmm.err ? '<br><small>' + esc(d.rmm.err) + '</small>' : '') + '</div>';
       const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const img = (u, name) => u ? extImg(u, 'Previsione ' + name, 'MJO_' + name, null, day)
-        : '<div class="err">Previsione ' + name + ' non trovata' + (d.mjoFc && d.mjoFc.err ? '<br><small>' + esc(d.mjoFc.err) + '</small>' : '') + '</div>';
+        : '<div class="err">Previsione ' + name + ' non trovata' + (d.mjoFc2 && d.mjoFc2.err ? '<br><small>' + esc(d.mjoFc2.err) + '</small>' : '') + '</div>';
       el.insertAdjacentHTML('beforeend',
         '<div class="box"><div class="bt">Previsione GFS — ensemble GEFS (NCEP), 15 giorni</div>' + img(fc && fc.gefs, 'GFS') +
         '<p class="foot"><a target="_blank" href="https://www.cpc.ncep.noaa.gov/products/precip/CWlink/MJO/CLIVAR/ncpe.shtml">Apri la pagina NOAA ›</a> · Nero: ultimi 40 giorni osservati. Linee gialle: membri dell\'ensemble. Media: rosso giorni 1–7, blu 8–14, viola oltre.</p></div>' +
@@ -781,7 +785,7 @@
       [['auto', 'Automatico'], ['light', 'Chiaro'], ['dark', 'Scuro']].map(t => '<button data-theme="' + t[0] + '" class="' + ((store.get('theme') || 'auto') === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') +
       '</div><p class="foot">Automatico segue il tema scelto nelle impostazioni del telefono.</p></div>' +
       '<div class="box"><div class="bt">Dati</div><button class="pill" id="all">Aggiorna tutto ora</button> <button class="pill" id="clr">Svuota cache</button><p class="foot" id="cachei"></p></div>' +
-      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.3 — i dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
+      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.3.1 — i dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
     const save = () => {
       p.enabled = $('#en').checked;
       app.querySelectorAll('[data-k]').forEach(c => { p.notif[c.dataset.k] = c.checked; });
