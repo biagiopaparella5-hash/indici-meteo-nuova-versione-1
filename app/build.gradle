@@ -1,0 +1,47 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'it.indicimeteo.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'it.indicimeteo.app'
+        minSdk 24
+        targetSdk 34
+        versionCode 4
+        versionName '1.3'
+    }
+
+    // Chiave fissa inclusa nel progetto: così ogni nuova versione si installa
+    // sopra la precedente senza dover disinstallare. Solo per uso personale.
+    signingConfigs {
+        personale {
+            storeFile file('indicimeteo.keystore')
+            storePassword 'indicimeteo'
+            keyAlias 'indicimeteo'
+            keyPassword 'indicimeteo'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.personale
+        }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.personale
+        }
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
