@@ -8,6 +8,7 @@
   const MESI = C.MESI;
 
   /* ================= rete e cache ================= */
+  const LASTMOD = {}; // data di pubblicazione dei file (intestazione Last-Modified)
   async function fetchText(urls, timeout, range) {
     let last;
     for (const url of [].concat(urls)) {
@@ -18,6 +19,8 @@
         const r = await fetch(u, { signal: ctl.signal, cache: 'no-store' });
         clearTimeout(tm);
         if (!r.ok) throw new Error('HTTP ' + r.status);
+        const lm = r.headers.get('last-modified');
+        if (lm && !isNaN(Date.parse(lm))) LASTMOD[url] = Date.parse(lm);
         return await r.text();
       } catch (e) { last = e; }
     }
@@ -126,7 +129,8 @@
     inflight[id] = (async () => {
       try {
         const data = await DS[id].load();
-        const v = { t: Date.now(), data };
+        const lms = [].concat(DS[id].src).map(u => LASTMOD[u]).filter(Boolean);
+        const v = { t: Date.now(), data, lm: lms.length ? Math.max.apply(null, lms) : null };
         store.set('ds:' + id, v);
         return v;
       } catch (e) {
@@ -215,6 +219,7 @@
     mjo: 'Oscillazione Madden-Julian: un\'area di convezione tropicale che si sposta verso est in 30–60 giorni. Il diagramma mostra la fase (1–8) e l\'ampiezza: dentro il cerchio (ampiezza &lt; 1) la MJO è debole. Diversi studi indicano che le fasi 3–4 tendono a favorire una NAO positiva e le fasi 6–7 una NAO negativa circa 1–2 settimane dopo: utile per la tendenza a medio-lungo termine.',
     qbo: 'Oscillazione Quasi-Biennale: vento medio a 30 hPa sopra l\'equatore (m/s). Valori positivi = fase occidentale, negativi = fase orientale. Con QBO orientale il vortice polare invernale tende a essere più debole e i riscaldamenti stratosferici improvvisi più probabili (effetto Holton-Tan).',
     iod: 'Dipolo dell\'Oceano Indiano (DMI): differenza di anomalia termica tra Oceano Indiano occidentale e orientale. Influenza soprattutto Africa orientale, India e Australia; può modulare indirettamente la circolazione globale.',
+    aam: 'Il <b>GLAAM</b> (momento angolare atmosferico globale) misura quanto "girano" i venti occidentali di tutta l\'atmosfera. <b>GLAAM positivo</b>: correnti a getto più forti e distese, tipico di El Niño. <b>GLAAM negativo</b>: getto più debole e ondulato, con più blocchi e saccature alle medie latitudini, tipico di La Niña. La <b>GWO</b> (Global Wind Oscillation) segue il ciclo del GLAAM in 8 fasi, come la MJO. Per il vortice polare il legame è indiretto: un getto troposferico ondulato (GLAAM basso) favorisce onde planetarie più ampie, che possono disturbare il vortice stratosferico; un GLAAM alto tende invece ad accompagnare un vortice più compatto.',
     vortex: 'Il vento zonale medio a 10 hPa e 60°N misura la forza del vortice polare stratosferico. Quando questo vento si inverte (diventa negativo, da occidentale a orientale) si parla di <b>riscaldamento stratosferico improvviso (SSW)</b>: nelle 2–6 settimane successive aumentano le probabilità di AO/NAO negativa e di irruzioni fredde verso l\'Europa, anche se non accade sempre. La probabilità di SSW è la quota dei membri dell\'ensemble che prevedono l\'inversione del vento.',
     nam: 'Il <b>NAM</b> (Northern Annular Mode, modo anulare nord) misura la forza del vortice polare a tutte le quote, dal suolo (1000 hPa) alla stratosfera (1 hPa). Colori <b>blu/positivi</b>: vortice forte e compatto, aria fredda chiusa sull\'Artico. Colori <b>arancio/negativi</b>: vortice debole o disturbato. Quando un\'anomalia negativa forte nasce in stratosfera e "scende" verso la troposfera nelle settimane successive, aumentano le probabilità di AO/NAO negativa e di irruzioni fredde verso l\'Europa. La linea tratteggiata separa l\'analisi (a sinistra) dalla previsione (a destra). I grafici collegati mostrano vento a 60°N (inversione da occidentale a orientale = riscaldamento stratosferico improvviso), temperatura della calotta polare, onde planetarie 1 e 2 e flusso di calore, che indica quanta energia le onde portano verso la stratosfera.',
     strat: 'Lo stato del vortice polare stratosferico (temperatura a 10 hPa, vento a 60°N) è decisivo per le tendenze invernali: un riscaldamento stratosferico improvviso può precedere di 2–4 settimane fasi di AO/NAO negativa. Per questi parametri le fonti pubblicano soprattutto grafici: li trovi ai link qui sotto.',
@@ -246,6 +251,7 @@
     { id: 'pna', title: 'PNA', sub: 'Pacifico – Nord America', ds: ['teleDaily', 'fc_pna'] },
     { id: 'nam', title: 'NAM', sub: 'Modo anulare nord · GFS e GEOS', ds: ['namDate'] },
     { id: 'vortex', title: 'Vortice polare', sub: 'Vento 10 hPa 60°N · probabilità SSW', ds: ['wic'] },
+    { id: 'aam', title: 'GLAAM · GWO', sub: 'Momento angolare atmosferico', ds: [] },
     { id: 'mjo', title: 'MJO', sub: 'Madden-Julian (RMM)', ds: ['rmm', 'mjoFc2'] },
     { id: 'enso', title: 'ENSO', sub: 'El Niño / La Niña', ds: ['oni', 'nino'] },
     { id: 'monthly', title: 'EA · SCA · EA/WR', sub: 'Altri pattern (mensili)', ds: ['teleMonthly'] },
@@ -277,7 +283,8 @@
         const end = last(fd);
         if (end) fcTxt = 'Previsione GEFS a ' + Math.round((end.x - l.x) / DAY) + ' gg: ' + sgn(end.mean, f1);
       }
-      return { main: sgn(l.y), color: posNeg(l.y), line2: dDay(l.x) + (wk ? ' · 7 gg fa ' + sgn(wk.y, f1) : ''), line3: fcTxt, stamp: l.x, spark: s.slice(-60) };
+      const upd = updDate(d.teleDaily, fc && fc.gefs && fc.gefs.init);
+      return { main: sgn(l.y), color: posNeg(l.y), line2: 'Aggiornato il ' + dDay(upd), line3: 'Valore del ' + dDay(l.x).slice(0, -5) + (fcTxt ? ' · ' + fcTxt.replace('Previsione GEFS a', 'GEFS') : ''), stamp: l.x, spark: s.slice(-60) };
     }
     if (id === 'vortex') {
       const w = d.wic && d.wic.data; if (!w) return null;
@@ -293,7 +300,7 @@
     if (id === 'mjo') {
       const r = d.rmm && d.rmm.data; if (!r || !r.length) return null;
       const l = last(r);
-      return { main: 'Fase ' + l.phase, color: l.amp >= 1 ? 'var(--acc)' : 'var(--mut)', line2: 'Ampiezza ' + f2(l.amp) + (l.amp >= 1 ? ' · attiva' : ' · debole'), line3: dDay(l.x), stamp: l.x, spark: r.slice(-60).map(p => ({ x: p.x, y: p.amp })) };
+      return { main: 'Fase ' + l.phase, color: l.amp >= 1 ? 'var(--acc)' : 'var(--mut)', line2: 'Aggiornato il ' + dDay(updDate(d.rmm)), line3: 'Ampiezza ' + f2(l.amp) + (l.amp >= 1 ? ' · attiva' : ' · debole') + ' · dato del ' + dDay(l.x).slice(0, -5), stamp: l.x, spark: r.slice(-60).map(p => ({ x: p.x, y: p.amp })) };
     }
     if (id === 'enso') {
       const o = d.oni && d.oni.data, n = d.nino && d.nino.data;
@@ -336,6 +343,11 @@
     }
     return null;
   }
+  // data dell'ultimo aggiornamento della fonte: Last-Modified del file, altrimenti la corsa del modello, altrimenti il download
+  function updDate(c, alt) {
+    const t = (c && c.lm) || alt || (c && c.t) || Date.now();
+    return t + 3600e3; // ora italiana circa, per non mostrare il giorno prima a mezzanotte UTC
+  }
   function kpColor(k) { return k >= 7 ? '#ff4d4d' : k >= 5 ? '#ff9f43' : k >= 4 ? '#ffd43b' : '#51cf66'; }
 
   function sparkline(pts) {
@@ -361,6 +373,7 @@
       let body;
       if (card.id === 'strat') body = '<div class="l2">Grafici del vortice polare</div><div class="l3">CPC · NASA · Università di Berlino</div>';
       else if (card.id === 'nam' && s) body = '<div class="big" style="color:' + s.color + '">' + s.main + '</div><div class="l2">' + s.line2 + '</div><img class="thumbw" src="' + namUrl(cardsData(card).namDate.data.date, 'gfs', 'namindex') + '" alt="">';
+      else if (card.id === 'aam') body = '<div class="l2">Previsioni GEFS e CFSv2, GWO, profilo per latitudine</div><img class="thumbw" src="' + NIU + 'forecast/aam/gefsbc_aam_fcst_current.png?t=' + dayBust() + '" alt="">';
       else if (card.id === 'sunimg') body = '<img class="thumb" src="' + sunImg('hmi') + '" alt=""><img class="thumb" src="' + sunImg('aia193') + '" alt="">';
       else if (s) body = '<div class="big" style="color:' + s.color + '">' + s.main + '</div><div class="l2">' + s.line2 + '</div>' + (s.line3 ? '<div class="l3">' + s.line3 + '</div>' : '') + sparkline(s.spark);
       else if (!anyData && errs.length) body = '<div class="err">Fonte non raggiungibile<br><small>' + esc(errs[0]) + '</small></div>';
@@ -440,6 +453,7 @@
   function boxes(el, titles) { el.insertAdjacentHTML('beforeend', titles.map(box).join('')); return Array.from(el.querySelectorAll('.cbox')).slice(-titles.length); }
   const kv = rows => '<table class="kv">' + rows.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('') + '</table>';
 
+  const NIU = 'https://atlas.niu.edu/';
   const NOAA_IMG = {
     nao: 'https://www.cpc.ncep.noaa.gov/products/precip/CWlink/pna/nao',
     pna: 'https://www.cpc.ncep.noaa.gov/products/precip/CWlink/pna/pna',
@@ -455,7 +469,7 @@
       const series = [
         { name: 'Osservato', type: 'line', color: FG(), data: s.slice(-90), width: 2 }
       ];
-      let rows = [['Ultimo valore', '<b style="color:' + posNeg(l.y) + '">' + sgn(l.y) + '</b> (' + dDay(l.x) + ')']];
+      let rows = [['Aggiornato il', dDay(updDate(d.teleDaily, fc && fc.gefs && fc.gefs.init))], ['Ultimo valore osservato', '<b style="color:' + posNeg(l.y) + '">' + sgn(l.y) + '</b> (' + dDay(l.x) + ')']];
       if (fc && fc.gefs) {
         const g = fc.gefs.days;
         series.unshift({ name: 'Spread GEFS', type: 'band', color: '#7aa2ff', data: g.map(p => ({ x: p.x, lo: p.min, hi: p.max })) });
@@ -485,7 +499,7 @@
       const fc = d.mjoFc2 && d.mjoFc2.data;
       if (r && r.length) {
         const l = last(r);
-        el.innerHTML = kv([['Osservato al', dDay(l.x)], ['Fase', '<b>' + l.phase + '</b>'], ['Ampiezza', f2(l.amp) + (l.amp >= 1 ? ' (attiva)' : ' (debole)')], ['RMM1 / RMM2', f2(l.rmm1) + ' / ' + f2(l.rmm2)]]);
+        el.innerHTML = kv([['Aggiornato il', dDay(updDate(d.rmm))], ['Ultimo dato osservato', dDay(l.x)], ['Fase', '<b>' + l.phase + '</b>'], ['Ampiezza', f2(l.amp) + (l.amp >= 1 ? ' (attiva)' : ' (debole)')], ['RMM1 / RMM2', f2(l.rmm1) + ' / ' + f2(l.rmm2)]]);
       } else el.innerHTML = '<div class="err">Osservazioni non disponibili' + (d.rmm && d.rmm.err ? '<br><small>' + esc(d.rmm.err) + '</small>' : '') + '</div>';
       const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const img = (u, name) => u ? extImg(u, 'Previsione ' + name, 'MJO_' + name, null, day)
@@ -551,6 +565,29 @@
         drawX(b.dataset.m);
       }));
       drawX(model);
+      bindZoom(el);
+    },
+    aam(el) {
+      const b = dayBust();
+      const box = (t, path, file, note) => '<div class="box"><div class="bt">' + t + '</div>' + extImg(NIU + path, t, file, null, b) + (note ? '<p class="foot">' + note + '</p>' : '') + '</div>';
+      const per = store.get('aamDays') || '90';
+      el.innerHTML =
+        box('Previsione GLAAM — GEFS (corretta per il bias)', 'forecast/aam/gefsbc_aam_fcst_current.png', 'GLAAM_GEFS', 'Anomalia standardizzata del momento angolare atmosferico globale: osservato e previsione dei membri dell\'ensemble.') +
+        box('Previsione GLAAM — CFSv2', 'forecast/aam/cfsv2_aam_fcst_current.png', 'GLAAM_CFSv2') +
+        box('Previsione GWO — GEFS (diagramma di fase)', 'forecast/aam/gefsbc_gwo_fcst_current.png', 'GWO_GEFS') +
+        box('Previsione GWO — membri CFSv2', 'forecast/aam/GWO_members_current.png', 'GWO_CFSv2') +
+        box('AAM relativo per latitudine — oggi rispetto al clima', 'analysis/aam/aam_profile_current.png', 'AAM_profilo') +
+        box('AAM per latitudine — anomalia standardizzata', 'analysis/aam/aam_stdanom_current.png', 'AAM_anomalia') +
+        '<div class="box"><div class="bt">Andamento osservato del momento angolare</div><div class="seg">' +
+        ['30', '90', '180', '365'].map(n => '<button data-n="' + n + '" class="' + (per === n ? 'on' : '') + '">' + n + ' gg</button>').join('') +
+        '</div><div id="aamh">' + extImg(NIU + 'analysis/aam/MR-latest-' + per + 'days.png', 'AAM ' + per + ' giorni', 'AAM_' + per + 'gg', null, b) + '</div></div>' +
+        '<p class="foot">Grafici della Northern Illinois University (Dr. Victor Gensini) — <a target="_blank" href="https://atlas.niu.edu/gwo/">atlas.niu.edu/gwo</a>. Tocca un grafico per ingrandirlo.</p>';
+      el.querySelectorAll('.seg button').forEach(btn => btn.addEventListener('click', () => {
+        store.set('aamDays', btn.dataset.n);
+        el.querySelectorAll('.seg button').forEach(x => x.classList.toggle('on', x === btn));
+        $('#aamh').innerHTML = extImg(NIU + 'analysis/aam/MR-latest-' + btn.dataset.n + 'days.png', 'AAM ' + btn.dataset.n + ' giorni', 'AAM_' + btn.dataset.n + 'gg', null, dayBust());
+        bindZoom(el);
+      }));
       bindZoom(el);
     },
     vortex(el, d) {
@@ -785,7 +822,7 @@
       [['auto', 'Automatico'], ['light', 'Chiaro'], ['dark', 'Scuro']].map(t => '<button data-theme="' + t[0] + '" class="' + ((store.get('theme') || 'auto') === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') +
       '</div><p class="foot">Automatico segue il tema scelto nelle impostazioni del telefono.</p></div>' +
       '<div class="box"><div class="bt">Dati</div><button class="pill" id="all">Aggiorna tutto ora</button> <button class="pill" id="clr">Svuota cache</button><p class="foot" id="cachei"></p></div>' +
-      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.3.1 — i dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
+      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.4 — i dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
     const save = () => {
       p.enabled = $('#en').checked;
       app.querySelectorAll('[data-k]').forEach(c => { p.notif[c.dataset.k] = c.checked; });

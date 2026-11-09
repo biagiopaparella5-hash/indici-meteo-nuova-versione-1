@@ -94,25 +94,22 @@ public class UpdateJob extends JobService {
             nid++;
             if (!on.optBoolean(s[0], false)) continue;
             try {
-                String sig;
-                String detail = null;
-                if ("tail".equals(s[3])) {
-                    Net.Result r = Net.get(s[2], "bytes=-3000");
-                    if (r.code == 416) r = Net.get(s[2], null);
-                    if (r.code >= 400) continue;
-                    String line = lastLine(new String(r.body, StandardCharsets.UTF_8));
-                    sig = line;
-                    detail = describe(s[0], line);
-                } else {
-                    sig = metaSignature(s[2]);
-                }
-                if (sig == null || sig.isEmpty()) continue;
-                String key = "sig:" + s[2];
+                // scarico solo la parte finale del file e ne ricavo la data dell'ultimo dato:
+                // si notifica solo quando questa data è PIÙ RECENTE di quella già vista
+                Net.Result r = Net.get(s[2], "bytes=-6000");
+                if (r.code == 416) r = Net.get(s[2], null);
+                if (r.code >= 400) continue;
+                String text = new String(r.body, StandardCharsets.UTF_8);
+                String[] kd = dataKey(s[0], s[2], text);
+                if (kd == null || kd[0] == null || kd[0].isEmpty()) continue;
+                String key = "last:" + s[2];
                 String old = sp.getString(key, null);
-                sp.edit().putString(key, sig).apply();
-                if (old != null && !old.equals(sig)) {
-                    Notif.show(ctx, nid, "Aggiornato: " + s[1],
-                            detail != null ? detail : "È disponibile un nuovo aggiornamento. Tocca per vederlo.", s[4]);
+                if (old == null || kd[0].compareTo(old) > 0) {
+                    sp.edit().putString(key, kd[0]).apply();
+                    if (old != null) {
+                        Notif.show(ctx, nid, "Aggiornato: " + s[1],
+                                kd[1] != null ? kd[1] : "È disponibile un nuovo dato. Tocca per vederlo.", s[4]);
+                    }
                 }
             } catch (Exception ignored) {
                 // fonte non raggiungibile: riproverà al prossimo controllo
@@ -148,36 +145,69 @@ public class UpdateJob extends JobService {
         }
     }
 
-    private static String metaSignature(String url) throws Exception {
-        Net.Result h = Net.head(url);
-        if (h.code < 400) {
-            String sig = (h.lastModified != null ? h.lastModified : "") + "|" + (h.etag != null ? h.etag : "")
-                    + "|" + (h.length > 0 ? h.length : "");
-            if (!sig.equals("||")) return sig;
-        }
-        Net.Result r = Net.get(url, "bytes=-400");
-        if (r.code >= 400) return null;
-        return lastLine(new String(r.body, StandardCharsets.UTF_8));
-    }
+    private static final String[] MON = {"JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"};
+    private static final String[] SEAS = {"DJF", "JFM", "FMA", "MAM", "AMJ", "MJJ", "JJA", "JAS", "ASO", "SON", "OND", "NDJ"};
 
-    private static String lastLine(String text) {
+    private static String p2(int v) { return v < 10 ? "0" + v : String.valueOf(v); }
+
+    /** Restituisce {chiave ordinabile dell'ultimo dato, testo della notifica} oppure null. */
+    static String[] dataKey(String id, String url, String text) {
         String[] lines = text.split("\\r?\\n");
-        for (int i = lines.length - 1; i >= 0; i--) {
-            if (!lines[i].trim().isEmpty()) return lines[i].trim();
-        }
-        return "";
-    }
-
-    private static String describe(String id, String line) {
         try {
-            if ("tele".equals(id)) {
-                String[] p = line.split(",");
-                return String.format(Locale.ITALY, "NAO del %s/%s/%s: %+.2f — tocca per vedere anche AO e PNA",
-                        p[2].trim(), p[1].trim(), p[0].trim(), Double.parseDouble(p[3].trim()));
+            if (url.endsWith(".json")) { // ciclo solare: ultimo "time-tag":"YYYY-MM"
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"time-tag\"\\s*:\\s*\"(\\d{4}-\\d{2})").matcher(text);
+                String last = null;
+                while (m.find()) last = m.group(1);
+                return last == null ? null : new String[]{last, "Nuovo dato mensile: " + last.substring(5) + "/" + last.substring(0, 4)};
             }
-            if ("enso".equals(id)) {
-                String[] p = line.trim().split("\\s+");
-                return String.format(Locale.ITALY, "ONI %s %s: %+.2f °C", p[0], p[1], Double.parseDouble(p[3]));
+            for (int i = lines.length - 1; i >= 0; i--) {
+                String l = lines[i].trim();
+                if (l.isEmpty()) continue;
+                if (url.contains(".cdas.")) { // year,month,day,valore
+                    String[] p = l.split(",");
+                    if (p.length >= 4 && p[0].trim().matches("\\d{4}")) {
+                        String k = p[0].trim() + "-" + p2(Integer.parseInt(p[1].trim())) + "-" + p2(Integer.parseInt(p[2].trim()));
+                        return new String[]{k, String.format(Locale.ITALY, "NAO del %s/%s/%s: %+.2f — tocca per vedere anche AO e PNA",
+                                p2(Integer.parseInt(p[2].trim())), p2(Integer.parseInt(p[1].trim())), p[0].trim(), Double.parseDouble(p[3].trim()))};
+                    }
+                } else if (url.contains(".gefs.")) { // lead,member,time,index,valid_time
+                    String[] p = l.split(",");
+                    if (p.length >= 5 && p[2].trim().matches("\\d{4}-\\d{2}-\\d{2}.*")) {
+                        String init = p[2].trim().substring(0, 10);
+                        return new String[]{init, "Nuova corsa GEFS del " + init.substring(8) + "/" + init.substring(5, 7) + ": previsioni a 15 giorni aggiornate"};
+                    }
+                } else if (url.contains("rmm.")) { // year month day rmm1 rmm2 phase amp
+                    String[] p = l.split("\\s+");
+                    if (p.length >= 7 && p[0].matches("\\d{4}")) {
+                        double amp = Double.parseDouble(p[6]);
+                        if (amp > 900) continue;
+                        String k = p[0] + "-" + p2(Integer.parseInt(p[1])) + "-" + p2(Integer.parseInt(p[2]));
+                        return new String[]{k, String.format(Locale.ITALY, "Dato del %s/%s: fase %s, ampiezza %.2f", p2(Integer.parseInt(p[2])), p2(Integer.parseInt(p[1])), p[5], amp)};
+                    }
+                } else if (url.contains("wksst")) { // 03JAN1990 ...
+                    java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d{2})([A-Za-z]{3})(\\d{4})").matcher(l);
+                    if (m.find()) {
+                        int mo = java.util.Arrays.asList(MON).indexOf(m.group(2).toUpperCase()) + 1;
+                        return new String[]{m.group(3) + "-" + p2(mo) + "-" + m.group(1), "Nuovo dato settimanale Niño 3.4 (settimana del " + m.group(1) + "/" + p2(mo) + ")"};
+                    }
+                } else if (url.contains("oni.")) { // SEAS YR TOTAL ANOM
+                    String[] p = l.split("\\s+");
+                    int si = p.length >= 4 ? java.util.Arrays.asList(SEAS).indexOf(p[0].toUpperCase()) : -1;
+                    if (si >= 0) return new String[]{p[1] + "-" + p2(si), String.format(Locale.ITALY, "ONI %s %s: %+.2f °C", p[0], p[1], Double.parseDouble(p[3]))};
+                } else if (url.contains("tele_index")) { // yyyy mm valori
+                    String[] p = l.split("\\s+");
+                    if (p.length >= 11 && p[0].matches("\\d{4}") && p[1].matches("\\d{1,2}")) {
+                        return new String[]{p[0] + "-" + p2(Integer.parseInt(p[1])), "Nuovi valori mensili di " + p2(Integer.parseInt(p[1])) + "/" + p[0]};
+                    }
+                } else if (url.contains("psl.noaa.gov")) { // anno + 12 valori, -999 = mancante
+                    String[] p = l.split("\\s+");
+                    if (p.length == 13 && p[0].matches("\\d{4}")) {
+                        int n = 0;
+                        for (int j = 1; j < 13; j++) if (Double.parseDouble(p[j]) > -99) n++;
+                        if (n == 0) continue;
+                        return new String[]{p[0] + "-" + p2(n), "Nuovo dato mensile: " + p2(n) + "/" + p[0]};
+                    }
+                }
             }
         } catch (Exception ignored) { }
         return null;

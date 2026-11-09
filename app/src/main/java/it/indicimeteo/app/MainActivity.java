@@ -202,6 +202,7 @@ public class MainActivity extends Activity {
             if (range != null && r.code == 416) r = Net.get(target, null);
             Map<String, String> h = new HashMap<>();
             h.put("Cache-Control", "no-store");
+            if (r.lastModified != null) h.put("Last-Modified", r.lastModified);
             String ct = r.contentType != null ? r.contentType : "text/plain";
             String mime = ct.split(";")[0].trim();
             if (r.code >= 300 && r.code < 400) r.code = 502;
