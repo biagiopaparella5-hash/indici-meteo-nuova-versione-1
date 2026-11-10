@@ -222,7 +222,7 @@
     aam: 'Il <b>GLAAM</b> (momento angolare atmosferico globale) misura quanto "girano" i venti occidentali di tutta l\'atmosfera. <b>GLAAM positivo</b>: correnti a getto più forti e distese, tipico di El Niño. <b>GLAAM negativo</b>: getto più debole e ondulato, con più blocchi e saccature alle medie latitudini, tipico di La Niña. La <b>GWO</b> (Global Wind Oscillation) segue il ciclo del GLAAM in 8 fasi, come la MJO. Per il vortice polare il legame è indiretto: un getto troposferico ondulato (GLAAM basso) favorisce onde planetarie più ampie, che possono disturbare il vortice stratosferico; un GLAAM alto tende invece ad accompagnare un vortice più compatto.',
     vortex: 'Il vento zonale medio a 10 hPa e 60°N misura la forza del vortice polare stratosferico. Quando questo vento si inverte (diventa negativo, da occidentale a orientale) si parla di <b>riscaldamento stratosferico improvviso (SSW)</b>: nelle 2–6 settimane successive aumentano le probabilità di AO/NAO negativa e di irruzioni fredde verso l\'Europa, anche se non accade sempre. La probabilità di SSW è la quota dei membri dell\'ensemble che prevedono l\'inversione del vento.',
     nam: 'Il <b>NAM</b> (Northern Annular Mode, modo anulare nord) misura la forza del vortice polare a tutte le quote, dal suolo (1000 hPa) alla stratosfera (1 hPa). Colori <b>blu/positivi</b>: vortice forte e compatto, aria fredda chiusa sull\'Artico. Colori <b>arancio/negativi</b>: vortice debole o disturbato. Quando un\'anomalia negativa forte nasce in stratosfera e "scende" verso la troposfera nelle settimane successive, aumentano le probabilità di AO/NAO negativa e di irruzioni fredde verso l\'Europa. La linea tratteggiata separa l\'analisi (a sinistra) dalla previsione (a destra). I grafici collegati mostrano vento a 60°N (inversione da occidentale a orientale = riscaldamento stratosferico improvviso), temperatura della calotta polare, onde planetarie 1 e 2 e flusso di calore, che indica quanta energia le onde portano verso la stratosfera.',
-    strat: 'Lo stato del vortice polare stratosferico (temperatura a 10 hPa, vento a 60°N) è decisivo per le tendenze invernali: un riscaldamento stratosferico improvviso può precedere di 2–4 settimane fasi di AO/NAO negativa. Per questi parametri le fonti pubblicano soprattutto grafici: li trovi ai link qui sotto.',
+    strat: 'Lo stato del vortice polare stratosferico (temperatura a 10 hPa, vento a 60°N) è decisivo per le tendenze invernali: un riscaldamento stratosferico improvviso può precedere di 2–4 settimane fasi di AO/NAO negativa. <b>Temperatura</b> della calotta polare in rapido aumento e <b>vento a 60°N</b> che scende sotto lo zero indicano un riscaldamento stratosferico. Il <b>flusso di calore v\'T\'</b> elevato indica onde planetarie che salgono e disturbano il vortice. Nei grafici le linee mostrano analisi e previsione rispetto al clima.',
     kp: 'Indice planetario dell\'attività geomagnetica (0–9) ogni 3 ore. Kp ≥ 5 indica una tempesta geomagnetica (scala NOAA G1–G5). Dall\'Italia le aurore sono visibili solo con tempeste molto forti (Kp 8–9).',
     wind: 'Vento solare misurato dai satelliti nel punto L1, circa un\'ora prima che raggiunga la Terra. Velocità alta (&gt; 500 km/s) e, soprattutto, campo magnetico <b>Bz negativo</b> (verso sud) per molte ore favoriscono le tempeste geomagnetiche.',
     xray: 'Flusso di raggi X misurato dai satelliti GOES (0,1–0,8 nm). Classi dei brillamenti: A, B, C (minori), M (moderati), X (forti). Ogni classe vale 10 volte la precedente.',
@@ -258,7 +258,7 @@
     { id: 'qbo', title: 'QBO', sub: 'Quasi-Biennale 30 hPa', ds: ['qbo'] },
     { id: 'iod', title: 'IOD', sub: 'Dipolo Oceano Indiano', ds: ['dmi'] },
     { id: 'aao', title: 'AAO', sub: 'Oscillazione Antartica', ds: ['teleDaily', 'fc_aao'] },
-    { id: 'strat', title: 'Stratosfera', sub: 'Vortice polare', ds: [] }
+    { id: 'strat', title: 'Stratosfera', sub: 'Vortice polare · emisfero nord', ds: [] }
   ];
   const SUN_CARDS = [
     { id: 'kp', title: 'Kp', sub: 'Attività geomagnetica', ds: ['kp'] },
@@ -371,7 +371,7 @@
       const anyData = card.ds.length === 0 || card.ds.some(id => d[id] && d[id].data);
       const nu = s && isNew(card.id, s.stamp);
       let body;
-      if (card.id === 'strat') body = '<div class="l2">Grafici del vortice polare</div><div class="l3">CPC · NASA · Università di Berlino</div>';
+      if (card.id === 'strat') body = '<div class="l2">Temperatura, vento e flusso di calore — GEFS e GFS</div><img class="thumbw" src="https://www.cpc.ncep.noaa.gov/products/stratosphere/SSW/gif_files/GEFS_U_10mb_60N_' + (new Date().getUTCMonth() >= 6 ? new Date().getUTCFullYear() + '-' + (new Date().getUTCFullYear() + 1) : (new Date().getUTCFullYear() - 1) + '-' + new Date().getUTCFullYear()) + '.png?t=' + dayBust() + '" alt="">';
       else if (card.id === 'nam' && s) body = '<div class="big" style="color:' + s.color + '">' + s.main + '</div><div class="l2">' + s.line2 + '</div><img class="thumbw" src="' + namUrl(cardsData(card).namDate.data.date, 'gfs', 'namindex') + '" alt="">';
       else if (card.id === 'aam') body = '<div class="l2">Previsioni GEFS e CFSv2, GWO, profilo per latitudine</div><img class="thumbw" src="' + NIU + 'forecast/aam/gefsbc_aam_fcst_current.png?t=' + dayBust() + '" alt="">';
       else if (card.id === 'sunimg') body = '<img class="thumb" src="' + sunImg('hmi') + '" alt=""><img class="thumb" src="' + sunImg('aia193') + '" alt="">';
@@ -610,13 +610,38 @@
       bindZoom(el);
     },
     strat(el) {
-      const links = [
-        ['CPC – Monitoraggio stratosfera (temperature, vento, vortice)', 'https://www.cpc.ncep.noaa.gov/products/stratosphere/'],
-        ['CPC – Polar vortex: grafici emisfero nord', 'https://www.cpc.ncep.noaa.gov/products/stratosphere/polar/polar.shtml'],
-        ['NASA Ozone Watch – Meteorologia polare', 'https://ozonewatch.gsfc.nasa.gov/meteorology/'],
-        ['Università di Berlino – Stratosfera (FU Berlin)', 'https://www.geo.fu-berlin.de/en/met/ag/strat/produkte/index.html']
-      ];
-      el.innerHTML = '<div class="links">' + links.map(l => '<a class="lnk" target="_blank" href="' + l[1] + '">' + l[0] + ' ›</a>').join('') + '</div>';
+      // grafici CPC/NOAA dell'emisfero nord: analisi + previsione a 16 giorni
+      const B = 'https://www.cpc.ncep.noaa.gov/products/stratosphere/SSW/gif_files/';
+      const now = new Date(), y = now.getUTCFullYear();
+      const season = now.getUTCMonth() >= 6 ? y + '-' + (y + 1) : (y - 1) + '-' + y;
+      const prevSeason = now.getUTCMonth() >= 6 ? (y - 1) + '-' + y : (y - 2) + '-' + (y - 1);
+      const b = dayBust();
+      const VARS = [['T', '6090N', 'Temperatura media 60–90°N (calotta polare)'], ['U', '60N', 'Vento zonale medio a 60°N'], ['vT', '4575N', 'Flusso di calore v\'T\' 45–75°N (onde verso la stratosfera)']];
+      const img = (pre, v, lev) => {
+        const name = pre + v[0] + '_' + lev + 'mb_' + v[1] + '_';
+        // se la stagione nuova non è ancora pubblicata, l'app prova quella precedente
+        return '<div class="bt" style="margin-top:10px">' + v[2] + ' — ' + lev + ' hPa</div>' +
+          '<div class="imgwrap"><img class="sun zimg" loading="lazy" src="' + B + name + season + '.png?t=' + b + '" data-alt="' + B + name + prevSeason + '.png" alt="" ' +
+          'onerror="if(this.dataset.alt){this.src=this.dataset.alt;this.dataset.alt=\'\';}else{this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'err\',textContent:\'Grafico non disponibile\'}))}"></div>' +
+          '<button class="dl" data-file="Strat_' + pre + v[0] + '_' + lev + 'hPa" onclick="__download(this)">⬇ Scarica grafico</button>';
+      };
+      const lvG = store.get('stratGefs') || '10', lvF = store.get('stratGfs') || '10';
+      el.innerHTML =
+        '<div class="box"><div class="bt">GEFS (ensemble) — analisi e previsione a 16 giorni</div>' +
+        '<div class="seg" id="sg1">' + ['10', '50', '100'].map(l => '<button data-l="' + l + '" class="' + (l === lvG ? 'on' : '') + '">' + l + ' hPa</button>').join('') + '</div><div id="stg1"></div></div>' +
+        '<div class="box"><div class="bt">GFS (deterministico) — analisi e previsione a 16 giorni</div>' +
+        '<div class="seg" id="sg2">' + ['2', '5', '10', '30', '50', '70', '100'].map(l => '<button data-l="' + l + '" class="' + (l === lvF ? 'on' : '') + '">' + l + '</button>').join('') + '</div><div id="stg2"></div></div>' +
+        '<p class="foot">Grafici NOAA CPC (emisfero nord). Tocca un grafico per ingrandirlo. Altri approfondimenti:</p>' +
+        '<div class="links">' + [
+          ['CPC – Monitoraggio SSW (pagina originale)', 'https://www.cpc.ncep.noaa.gov/products/stratosphere/SSW/'],
+          ['NASA Ozone Watch – Meteorologia polare', 'https://ozonewatch.gsfc.nasa.gov/meteorology/'],
+          ['Università di Berlino – Diagnostica invernale', 'https://users.met.fu-berlin.de/~Aktuell/strat-www/wdiag/wdiag.php?lng=eng']
+        ].map(l => '<a class="lnk" target="_blank" href="' + l[1] + '">' + l[0] + ' ›</a>').join('') + '</div>';
+      const drawG = l => { $('#stg1').innerHTML = VARS.map(v => img('GEFS_', v, l)).join(''); bindZoom(el); };
+      const drawF = l => { $('#stg2').innerHTML = VARS.map(v => img('', v, l)).join(''); bindZoom(el); };
+      el.querySelectorAll('#sg1 button').forEach(x => x.addEventListener('click', () => { store.set('stratGefs', x.dataset.l); el.querySelectorAll('#sg1 button').forEach(y => y.classList.toggle('on', y === x)); drawG(x.dataset.l); }));
+      el.querySelectorAll('#sg2 button').forEach(x => x.addEventListener('click', () => { store.set('stratGfs', x.dataset.l); el.querySelectorAll('#sg2 button').forEach(y => y.classList.toggle('on', y === x)); drawF(x.dataset.l); }));
+      drawG(lvG); drawF(lvF);
     },
     kp(el, d) {
       const k = d.kp && d.kp.data; if (!k) { el.innerHTML = '<div class="err">Dati non disponibili</div>'; return; }
@@ -822,7 +847,7 @@
       [['auto', 'Automatico'], ['light', 'Chiaro'], ['dark', 'Scuro']].map(t => '<button data-theme="' + t[0] + '" class="' + ((store.get('theme') || 'auto') === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') +
       '</div><p class="foot">Automatico segue il tema scelto nelle impostazioni del telefono.</p></div>' +
       '<div class="box"><div class="bt">Dati</div><button class="pill" id="all">Aggiorna tutto ora</button> <button class="pill" id="clr">Svuota cache</button><p class="foot" id="cachei"></p></div>' +
-      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.4 — i dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
+      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.5 — i dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
     const save = () => {
       p.enabled = $('#en').checked;
       app.querySelectorAll('[data-k]').forEach(c => { p.notif[c.dataset.k] = c.checked; });
