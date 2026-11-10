@@ -454,6 +454,8 @@
   const kv = rows => '<table class="kv">' + rows.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('') + '</table>';
 
   const NIU = 'https://atlas.niu.edu/';
+  const FU = 'https://users.met.fu-berlin.de/~Aktuell/strat-www/wdiag/figs/ecmwf1/';
+  const FU_STEPS = [['a12', 'Analisi (oggi 12 UTC)'], ['f24', '+1 giorno'], ['f48', '+2 giorni'], ['f72', '+3 giorni'], ['f96', '+4 giorni'], ['f120', '+5 giorni'], ['f144', '+6 giorni'], ['f168', '+7 giorni'], ['f192', '+8 giorni'], ['f216', '+9 giorni'], ['f240', '+10 giorni']];
   const NOAA_IMG = {
     nao: 'https://www.cpc.ncep.noaa.gov/products/precip/CWlink/pna/nao',
     pna: 'https://www.cpc.ncep.noaa.gov/products/precip/CWlink/pna/pna',
@@ -631,17 +633,32 @@
         '<div class="seg" id="sg1">' + ['10', '50', '100'].map(l => '<button data-l="' + l + '" class="' + (l === lvG ? 'on' : '') + '">' + l + ' hPa</button>').join('') + '</div><div id="stg1"></div></div>' +
         '<div class="box"><div class="bt">GFS (deterministico) — analisi e previsione a 16 giorni</div>' +
         '<div class="seg" id="sg2">' + ['2', '5', '10', '30', '50', '70', '100'].map(l => '<button data-l="' + l + '" class="' + (l === lvF ? 'on' : '') + '">' + l + '</button>').join('') + '</div><div id="stg2"></div></div>' +
-        '<p class="foot">Grafici NOAA CPC (emisfero nord). Tocca un grafico per ingrandirlo. Altri approfondimenti:</p>' +
+        '<div class="box"><div class="bt">Università di Berlino — ECMWF, analisi e previsione fino a 10 giorni</div>' +
+        '<label class="row">Giorno <select id="fuStep">' + FU_STEPS.map(x => '<option value="' + x[0] + '"' + ((store.get('fuStep') || 'a12') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>').join('') + '</select></label>' +
+        '<div class="bt" style="margin-top:8px">Mappe: geopotenziale e temperatura</div><div class="seg" id="fuL">' + ['100', '50', '30', '10', '5', '1'].map(l => '<button data-l="' + l + '" class="' + ((store.get('fuLev') || '10') === l ? 'on' : '') + '">' + l + '</button>').join('') + '</div><div id="fuMap"></div>' +
+        '<div class="bt" style="margin-top:12px">Mappe: vorticità potenziale (livelli isentropici)</div><div class="seg" id="fuP">' + ['380', '475', '600', '850'].map(l => '<button data-l="' + l + '" class="' + ((store.get('fuPv') || '850') === l ? 'on' : '') + '">' + l + ' K</button>').join('') + '</div><div id="fuPv"></div>' +
+        '<div class="bt" style="margin-top:12px">Sezioni medie zonali</div><div class="seg" id="fuZ">' + [['t', 'Temperatura'], ['u', 'Vento'], ['vt', 'Calore'], ['EP', 'Flusso EP']].map(z => '<button data-z="' + z[0] + '" class="' + ((store.get('fuZm') || 'u') === z[0] ? 'on' : '') + '">' + z[1] + '</button>').join('') + '</div><div id="fuZm"></div>' +
+        '<div class="bt" style="margin-top:12px">Serie della stagione 2026/27</div>' + extImg(FU + 'temp_wind.png', 'Berlino serie temperatura e vento', 'Berlino_serie_T_vento', null, b) + extImg(FU + 'fluxes.png', 'Berlino serie flussi', 'Berlino_serie_flussi', null, b) +
+        '<p class="foot">Grafici: Freie Universität Berlin, dati ECMWF via DWD.</p></div>' +
+        '<p class="foot">Grafici NOAA CPC e Università di Berlino (emisfero nord). Tocca un grafico per ingrandirlo. Altri approfondimenti:</p>' +
         '<div class="links">' + [
           ['CPC – Monitoraggio SSW (pagina originale)', 'https://www.cpc.ncep.noaa.gov/products/stratosphere/SSW/'],
           ['NASA Ozone Watch – Meteorologia polare', 'https://ozonewatch.gsfc.nasa.gov/meteorology/'],
-          ['Università di Berlino – Diagnostica invernale', 'https://users.met.fu-berlin.de/~Aktuell/strat-www/wdiag/wdiag.php?lng=eng']
+          ['Università di Berlino – Diagnostica invernale (pagina originale)', 'https://users.met.fu-berlin.de/~Aktuell/strat-www/wdiag/wdiag.php?lng=eng']
         ].map(l => '<a class="lnk" target="_blank" href="' + l[1] + '">' + l[0] + ' ›</a>').join('') + '</div>';
       const drawG = l => { $('#stg1').innerHTML = VARS.map(v => img('GEFS_', v, l)).join(''); bindZoom(el); };
       const drawF = l => { $('#stg2').innerHTML = VARS.map(v => img('', v, l)).join(''); bindZoom(el); };
       el.querySelectorAll('#sg1 button').forEach(x => x.addEventListener('click', () => { store.set('stratGefs', x.dataset.l); el.querySelectorAll('#sg1 button').forEach(y => y.classList.toggle('on', y === x)); drawG(x.dataset.l); }));
       el.querySelectorAll('#sg2 button').forEach(x => x.addEventListener('click', () => { store.set('stratGfs', x.dataset.l); el.querySelectorAll('#sg2 button').forEach(y => y.classList.toggle('on', y === x)); drawF(x.dataset.l); }));
       drawG(lvG); drawF(lvF);
+      const step = () => $('#fuStep').value;
+      const fuMap = () => { $('#fuMap').innerHTML = extImg(FU + 'ecmwf' + (store.get('fuLev') || '10') + step() + '.png', 'Mappa Berlino', 'Berlino_' + (store.get('fuLev') || '10') + 'hPa_' + step(), null, b); bindZoom(el); };
+      const fuPv = () => { $('#fuPv').innerHTML = extImg(FU + 'ecmwfpv' + (store.get('fuPv') || '850') + step() + '.png', 'Vorticità potenziale', 'Berlino_PV' + (store.get('fuPv') || '850') + 'K_' + step(), null, b); bindZoom(el); };
+      const fuZm = () => { $('#fuZm').innerHTML = extImg(FU + 'ecmwfzm_' + (store.get('fuZm') || 'u') + '_' + step() + '.png', 'Sezione zonale', 'Berlino_zonale_' + (store.get('fuZm') || 'u') + '_' + step(), null, b); bindZoom(el); };
+      const seg = (id, key, attr, fn) => el.querySelectorAll('#' + id + ' button').forEach(x => x.addEventListener('click', () => { store.set(key, x.dataset[attr]); el.querySelectorAll('#' + id + ' button').forEach(y => y.classList.toggle('on', y === x)); fn(); }));
+      seg('fuL', 'fuLev', 'l', fuMap); seg('fuP', 'fuPv', 'l', fuPv); seg('fuZ', 'fuZm', 'z', fuZm);
+      $('#fuStep').addEventListener('change', () => { store.set('fuStep', step()); fuMap(); fuPv(); fuZm(); });
+      fuMap(); fuPv(); fuZm();
     },
     kp(el, d) {
       const k = d.kp && d.kp.data; if (!k) { el.innerHTML = '<div class="err">Dati non disponibili</div>'; return; }
@@ -847,7 +864,7 @@
       [['auto', 'Automatico'], ['light', 'Chiaro'], ['dark', 'Scuro']].map(t => '<button data-theme="' + t[0] + '" class="' + ((store.get('theme') || 'auto') === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') +
       '</div><p class="foot">Automatico segue il tema scelto nelle impostazioni del telefono.</p></div>' +
       '<div class="box"><div class="bt">Dati</div><button class="pill" id="all">Aggiorna tutto ora</button> <button class="pill" id="clr">Svuota cache</button><p class="foot" id="cachei"></p></div>' +
-      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.5 — i dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
+      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.6 — i dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
     const save = () => {
       p.enabled = $('#en').checked;
       app.querySelectorAll('[data-k]').forEach(c => { p.notif[c.dataset.k] = c.checked; });
