@@ -33,6 +33,7 @@ final class Notif {
         b.setSmallIcon(R.drawable.ic_notify)
                 .setContentTitle(title)
                 .setContentText(text)
+                .setSubText("\u00A9 " + Firma.autore())
                 .setStyle(new Notification.BigTextStyle().bigText(text))
                 .setContentIntent(pi)
                 .setAutoCancel(true);

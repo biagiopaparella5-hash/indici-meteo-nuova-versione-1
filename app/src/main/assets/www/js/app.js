@@ -1,4 +1,5 @@
-/* Indici Meteo — interfaccia */
+/* Indici Meteo — interfaccia
+ * © Biagio Paparella. Tutti i diritti riservati. Vietata la copia o la modifica senza autorizzazione dell'autore. */
 (function () {
   'use strict';
   const D = window.MeteoData, I = window.Instab, C = window.Chart, SRC = D.SRC;
@@ -181,11 +182,14 @@
     const w = img.parentNode; w.innerHTML = ''; w.appendChild(box);
   };
   window.__download = function (btn) {
-    const img = btn.parentNode.querySelector('img');
-    if (!img) return;
+    // il grafico è quello nello stesso riquadro del pulsante (non il primo della pagina)
+    const wrap = btn.closest('.imgwrap');
+    let img = wrap && wrap.querySelector('img');
+    if (!img) { let p = btn.previousElementSibling; while (p && !img) { img = p.tagName === 'IMG' ? p : p.querySelector && p.querySelector('img'); p = p.previousElementSibling; } }
+    if (!img) { btn.textContent = 'Grafico non disponibile'; return; }
     const url = img.currentSrc || img.src;
     const name = (btn.dataset.file || 'grafico') + '_' + new Date().toISOString().slice(0, 10) + '.' + ((url.match(/\.(png|gif|jpe?g)(\?|$)/i) || [, 'png'])[1].toLowerCase());
-    if (window.Android && Android.saveImage) { Android.saveImage(url, name); btn.textContent = '✓ Download avviato'; }
+    if (window.Android && Android.saveImage) { Android.saveImage(url, name); btn.textContent = '✓ Download avviato'; setTimeout(() => { btn.textContent = '⬇ Scarica grafico'; }, 4000); }
     else { const a = document.createElement('a'); a.href = url; a.download = name; a.target = '_blank'; document.body.appendChild(a); a.click(); a.remove(); }
   };
   // tpl: indirizzo con {D} al posto della data (oppure indirizzo fisso); date: YYYYMMDD o null
@@ -283,7 +287,7 @@
         const end = last(fd);
         if (end) fcTxt = 'Previsione GEFS a ' + Math.round((end.x - l.x) / DAY) + ' gg: ' + sgn(end.mean, f1);
       }
-      const upd = updDate(d.teleDaily, fc && fc.gefs && fc.gefs.init);
+      const upd = updDate(d.teleDaily, l.x, 'tele_' + id);
       return { main: sgn(l.y), color: posNeg(l.y), line2: 'Aggiornato il ' + dDay(upd), line3: 'Valore del ' + dDay(l.x).slice(0, -5) + (fcTxt ? ' · ' + fcTxt.replace('Previsione GEFS a', 'GEFS') : ''), stamp: l.x, spark: s.slice(-60) };
     }
     if (id === 'vortex') {
@@ -300,7 +304,7 @@
     if (id === 'mjo') {
       const r = d.rmm && d.rmm.data; if (!r || !r.length) return null;
       const l = last(r);
-      return { main: 'Fase ' + l.phase, color: l.amp >= 1 ? 'var(--acc)' : 'var(--mut)', line2: 'Aggiornato il ' + dDay(updDate(d.rmm)), line3: 'Ampiezza ' + f2(l.amp) + (l.amp >= 1 ? ' · attiva' : ' · debole') + ' · dato del ' + dDay(l.x).slice(0, -5), stamp: l.x, spark: r.slice(-60).map(p => ({ x: p.x, y: p.amp })) };
+      return { main: 'Fase ' + l.phase, color: l.amp >= 1 ? 'var(--acc)' : 'var(--mut)', line2: 'Aggiornato il ' + dDay(updDate(d.rmm, l.x, 'rmm')), line3: 'Ampiezza ' + f2(l.amp) + (l.amp >= 1 ? ' · attiva' : ' · debole') + ' · dato del ' + dDay(l.x).slice(0, -5), stamp: l.x, spark: r.slice(-60).map(p => ({ x: p.x, y: p.amp })) };
     }
     if (id === 'enso') {
       const o = d.oni && d.oni.data, n = d.nino && d.nino.data;
@@ -343,9 +347,22 @@
     }
     return null;
   }
-  // data dell'ultimo aggiornamento della fonte: Last-Modified del file, altrimenti la corsa del modello, altrimenti il download
-  function updDate(c, alt) {
-    const t = (c && c.lm) || alt || (c && c.t) || Date.now();
+  // data in cui la fonte ha pubblicato l'ultimo dato: cambia SOLO quando arriva un dato nuovo
+  // (si ricorda quando l'ultimo valore è cambiato; il Last-Modified da solo non basta perché
+  // alcuni file vengono riscritti ogni giorno anche senza dati nuovi)
+  function updDate(c, key, name) {
+    let t;
+    if (key == null || !name) t = (c && c.lm) || (c && c.t) || Date.now();
+    else {
+      const rec = store.get('upd:' + name);
+      if (rec && rec.k === key) t = rec.t;
+      else {
+        const lm = c && c.lm;
+        if (rec) t = lm && lm >= key ? Math.min(lm, Date.now()) : Date.now(); // dato nuovo appena arrivato
+        else t = lm && lm >= key ? Math.min(lm, key + 1.5 * DAY) : key + DAY; // prima apertura: stima prudente
+        store.set('upd:' + name, { k: key, t });
+      }
+    }
     return t + 3600e3; // ora italiana circa, per non mostrare il giorno prima a mezzanotte UTC
   }
   function kpColor(k) { return k >= 7 ? '#ff4d4d' : k >= 5 ? '#ff9f43' : k >= 4 ? '#ffd43b' : '#51cf66'; }
@@ -471,7 +488,7 @@
       const series = [
         { name: 'Osservato', type: 'line', color: FG(), data: s.slice(-90), width: 2 }
       ];
-      let rows = [['Aggiornato il', dDay(updDate(d.teleDaily, fc && fc.gefs && fc.gefs.init))], ['Ultimo valore osservato', '<b style="color:' + posNeg(l.y) + '">' + sgn(l.y) + '</b> (' + dDay(l.x) + ')']];
+      let rows = [['Aggiornato il', dDay(updDate(d.teleDaily, l.x, 'tele_' + k))], ['Ultimo valore osservato', '<b style="color:' + posNeg(l.y) + '">' + sgn(l.y) + '</b> (' + dDay(l.x) + ')']];
       if (fc && fc.gefs) {
         const g = fc.gefs.days;
         series.unshift({ name: 'Spread GEFS', type: 'band', color: '#7aa2ff', data: g.map(p => ({ x: p.x, lo: p.min, hi: p.max })) });
@@ -501,7 +518,7 @@
       const fc = d.mjoFc2 && d.mjoFc2.data;
       if (r && r.length) {
         const l = last(r);
-        el.innerHTML = kv([['Aggiornato il', dDay(updDate(d.rmm))], ['Ultimo dato osservato', dDay(l.x)], ['Fase', '<b>' + l.phase + '</b>'], ['Ampiezza', f2(l.amp) + (l.amp >= 1 ? ' (attiva)' : ' (debole)')], ['RMM1 / RMM2', f2(l.rmm1) + ' / ' + f2(l.rmm2)]]);
+        el.innerHTML = kv([['Aggiornato il', dDay(updDate(d.rmm, l.x, 'rmm'))], ['Ultimo dato osservato', dDay(l.x)], ['Fase', '<b>' + l.phase + '</b>'], ['Ampiezza', f2(l.amp) + (l.amp >= 1 ? ' (attiva)' : ' (debole)')], ['RMM1 / RMM2', f2(l.rmm1) + ' / ' + f2(l.rmm2)]]);
       } else el.innerHTML = '<div class="err">Osservazioni non disponibili' + (d.rmm && d.rmm.err ? '<br><small>' + esc(d.rmm.err) + '</small>' : '') + '</div>';
       const day = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const img = (u, name) => u ? extImg(u, 'Previsione ' + name, 'MJO_' + name, null, day)
@@ -624,8 +641,8 @@
         // se la stagione nuova non è ancora pubblicata, l'app prova quella precedente
         return '<div class="bt" style="margin-top:10px">' + v[2] + ' — ' + lev + ' hPa</div>' +
           '<div class="imgwrap"><img class="sun zimg" loading="lazy" src="' + B + name + season + '.png?t=' + b + '" data-alt="' + B + name + prevSeason + '.png" alt="" ' +
-          'onerror="if(this.dataset.alt){this.src=this.dataset.alt;this.dataset.alt=\'\';}else{this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'err\',textContent:\'Grafico non disponibile\'}))}"></div>' +
-          '<button class="dl" data-file="Strat_' + pre + v[0] + '_' + lev + 'hPa" onclick="__download(this)">⬇ Scarica grafico</button>';
+          'onerror="if(this.dataset.alt){this.src=this.dataset.alt;this.dataset.alt=\'\';}else{this.parentNode.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'err\',textContent:\'Grafico non disponibile\'}))}">' +
+          '<button class="dl" data-file="Strat_' + pre + v[0] + '_' + lev + 'hPa" onclick="__download(this)">⬇ Scarica grafico</button></div>';
       };
       const lvG = store.get('stratGefs') || '10', lvF = store.get('stratGfs') || '10';
       el.innerHTML =
@@ -835,7 +852,7 @@
 
   /* ================= impostazioni ================= */
   const NOTIF = [
-    ['tele', 'NAO / AO / PNA giornalieri'], ['gefs', 'Nuova corsa previsioni GEFS'], ['mjo', 'MJO'],
+    ['tele', 'NAO / AO / PNA giornalieri (un\'unica notifica)'], ['mjo', 'MJO'],
     ['enso', 'ENSO (ONI e settimanale)'], ['mensili', 'Pattern mensili (EA, SCA…)'], ['qbo', 'QBO'],
     ['sole', 'Ciclo solare mensile'], ['kp', 'Allerta tempesta geomagnetica (Kp ≥ 5)']
   ];
@@ -845,7 +862,7 @@
     p = p || store.get('prefs') || {};
     if (!p.notif) p.notif = { tele: true, gefs: false, mjo: true, enso: true, mensili: true, qbo: false, sole: false, kp: true };
     if (p.enabled === undefined) p.enabled = false;
-    if (!p.intervalH) p.intervalH = 3;
+    if (!p.intervalMin) p.intervalMin = 30;
     return p;
   }
   function savePrefs(p) { store.set('prefs', p); if (window.Android && Android.setPrefs) Android.setPrefs(JSON.stringify(p)); }
@@ -858,17 +875,20 @@
       (IS_APP ? '' : '<p class="foot">Le notifiche funzionano solo nell\'app Android installata.</p>') +
       '<label class="sw"><input type="checkbox" id="en"' + (p.enabled ? ' checked' : '') + '> Avvisami quando escono nuovi dati</label>' +
       '<div id="nlist" class="' + (p.enabled ? '' : 'dim') + '">' + NOTIF.map(n => '<label class="sw"><input type="checkbox" data-k="' + n[0] + '"' + (p.notif[n[0]] ? ' checked' : '') + '> ' + n[1] + '</label>').join('') +
-      '<label class="row">Controlla ogni <select id="iv">' + [1, 2, 3, 6, 12].map(h => '<option value="' + h + '"' + (p.intervalH === h ? ' selected' : '') + '>' + h + ' ore</option>').join('') + '</select></label></div>' +
+      '<label class="row">Controlla ogni <select id="iv">' + [[15, '15 minuti'], [30, '30 minuti'], [60, '1 ora'], [120, '2 ore'], [180, '3 ore']].map(h => '<option value="' + h[0] + '"' + (p.intervalMin === h[0] ? ' selected' : '') + '>' + h[1] + '</option>').join('') + '</select></label>' +
+      '<p class="foot">Ricevi la notifica solo quando la fonte pubblica davvero un dato nuovo: più il controllo è frequente, prima arriva l\'avviso (usa pochissimi dati).</p></div>' +
       (IS_APP ? '<button class="pill" id="test">Invia notifica di prova</button>' : '') + '</div>' +
       '<div class="box"><div class="bt">Aspetto</div><div class="theme3">' +
       [['auto', 'Automatico'], ['light', 'Chiaro'], ['dark', 'Scuro']].map(t => '<button data-theme="' + t[0] + '" class="' + ((store.get('theme') || 'auto') === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('') +
       '</div><p class="foot">Automatico segue il tema scelto nelle impostazioni del telefono.</p></div>' +
       '<div class="box"><div class="bt">Dati</div><button class="pill" id="all">Aggiorna tutto ora</button> <button class="pill" id="clr">Svuota cache</button><p class="foot" id="cachei"></p></div>' +
-      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.6 — i dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
+      (IS_APP && window.Android && Android.webVersion ? '<div class="box"><div class="bt">Aggiornamenti dell\'app</div><p class="foot">Versione interfaccia: <b>' + esc(Android.webVersion()) + '</b>. L\'app controlla da sola a ogni apertura se c\'è una versione nuova e la scarica senza reinstallare.</p>' +
+        '<button class="pill" id="updchk">Cerca aggiornamenti ora</button> <button class="pill" id="updreset">Ripristina versione originale</button><p class="foot" id="updst"></p></div>' : '') +
+      '<div class="box"><div class="bt">Informazioni</div><p class="foot">Indici Meteo 1.8 — © ' + new Date().getFullYear() + ' Biagio Paparella, tutti i diritti riservati. I dati vengono scaricati direttamente dalle fonti ufficiali: NOAA CPC e PSL (teleconnessioni, ENSO, QBO, IOD), Bureau of Meteorology australiano (MJO), NOAA SWPC (meteo spaziale), NASA SDO e SOHO (immagini del Sole), Open-Meteo.com (modelli per l\'instabilità). Ogni fonte ha i suoi orari di pubblicazione: l\'app mostra sempre l\'ultimo dato disponibile e la data a cui si riferisce. Strumento informativo: per allerte ufficiali fai riferimento alla Protezione Civile e al Servizio Meteorologico.</p></div>';
     const save = () => {
       p.enabled = $('#en').checked;
       app.querySelectorAll('[data-k]').forEach(c => { p.notif[c.dataset.k] = c.checked; });
-      p.intervalH = +$('#iv').value;
+      p.intervalMin = +$('#iv').value;
       $('#nlist').className = p.enabled ? '' : 'dim';
       savePrefs(p);
     };
@@ -879,6 +899,8 @@
       applyTheme();
     }));
     if ($('#test')) $('#test').onclick = () => { save(); Android.testNotification(); };
+    if ($('#updchk')) $('#updchk').onclick = () => { $('#updst').textContent = 'Controllo in corso…'; Android.checkUpdate(); };
+    if ($('#updreset')) $('#updreset').onclick = () => { if (confirm('Tornare alla versione dell\'interfaccia inclusa nell\'app?')) Android.resetWeb(); };
     $('#all').onclick = async () => { status('Aggiorno tutte le fonti…'); await Promise.all(Object.keys(DS).map(id => getDS(id, true))); status(''); cacheInfo(); };
     $('#clr').onclick = () => { Object.keys(localStorage).filter(k => /^(ds:|om:|ita:)/.test(k)).forEach(k => localStorage.removeItem(k)); cacheInfo(); };
     cacheInfo();
@@ -889,6 +911,15 @@
     const err = Object.keys(DS).filter(id => cached(id) && cached(id).err);
     el.innerHTML = n + ' fonti in memoria su ' + Object.keys(DS).length + (err.length ? '. Con errori all\'ultimo tentativo: ' + err.join(', ') : '.');
   }
+
+  /* ================= aggiornamento interfaccia senza nuovo APK ================= */
+  window.__updateReady = v => {
+    let b = $('#updbar');
+    if (!b) { b = document.createElement('div'); b.id = 'updbar'; document.body.appendChild(b); }
+    b.innerHTML = '✨ Nuova versione dell\'app pronta (' + v + ') <button onclick="Android.reload()">Ricarica</button>';
+    const st = $('#updst'); if (st) st.textContent = 'Scaricata la versione ' + v + ': tocca Ricarica in basso.';
+  };
+  window.__updateNone = () => { const st = $('#updst'); if (st) st.textContent = 'Hai già l\'ultima versione.'; };
 
   /* ================= tema chiaro / scuro ================= */
   function applyTheme() {

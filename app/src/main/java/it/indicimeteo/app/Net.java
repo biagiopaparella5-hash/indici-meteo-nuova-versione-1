@@ -20,14 +20,19 @@ final class Net {
     }
 
     static Result get(String url, String range) throws IOException {
-        return request(url, "GET", range);
+        return request(url, "GET", range, null);
+    }
+
+    /** Download "come il browser": User-Agent della WebView, Referer del sito e cookie già ottenuti dalla WebView. */
+    static Result getAsBrowser(String url, java.util.Map<String, String> headers) throws IOException {
+        return request(url, "GET", null, headers);
     }
 
     static Result head(String url) throws IOException {
-        return request(url, "HEAD", null);
+        return request(url, "HEAD", null, null);
     }
 
-    private static Result request(String url, String method, String range) throws IOException {
+    private static Result request(String url, String method, String range, java.util.Map<String, String> headers) throws IOException {
         String current = url;
         for (int i = 0; i < 6; i++) {
             HttpURLConnection c = (HttpURLConnection) new URL(current).openConnection();
@@ -37,6 +42,8 @@ final class Net {
             c.setRequestMethod(method);
             c.setRequestProperty("User-Agent", UA);
             c.setRequestProperty("Accept", "*/*");
+            if (headers != null) for (java.util.Map.Entry<String, String> h : headers.entrySet())
+                if (h.getValue() != null) c.setRequestProperty(h.getKey(), h.getValue());
             if (range != null) {
                 c.setRequestProperty("Range", range);
                 c.setRequestProperty("Accept-Encoding", "identity"); // niente gzip sui pezzi di file

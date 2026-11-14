@@ -1,3 +1,4 @@
+/* Indici Meteo — © Biagio Paparella. Tutti i diritti riservati. */
 /* Grafici SVG leggeri, senza librerie esterne */
 (function (global) {
   'use strict';

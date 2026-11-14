@@ -1,3 +1,4 @@
+/* Indici Meteo — © Biagio Paparella. Tutti i diritti riservati. */
 /* Indici di instabilità — dati modello da Open-Meteo, indici calcolati qui */
 (function (global) {
   'use strict';

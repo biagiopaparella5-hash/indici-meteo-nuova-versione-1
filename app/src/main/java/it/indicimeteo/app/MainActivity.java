@@ -24,6 +24,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
@@ -79,6 +81,7 @@ public class MainActivity extends Activity {
             web.loadUrl(BASE + "index.html" + (route != null ? route : ""));
         }
         UpdateJob.schedule(this);
+        checkWebUpdate(false);
     }
 
     boolean isNightNow() {
@@ -108,26 +111,83 @@ public class MainActivity extends Activity {
         if (web != null) web.evaluateJavascript("window.__applyTheme && window.__applyTheme()", null);
     }
 
-    void downloadImage(String url, String name) {
+    /**
+     * Scarica il grafico con le stesse credenziali della WebView (User-Agent, Referer, cookie),
+     * controlla che sia davvero un'immagine e la salva in Immagini/IndiciMeteo.
+     */
+    void downloadImage(final String url, final String name) {
         if (url == null || !(url.startsWith("https://") || url.startsWith("http://"))) return;
         if (Build.VERSION.SDK_INT < 29 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 3);
             Toast.makeText(this, "Consenti l'accesso alla memoria e tocca di nuovo Scarica", Toast.LENGTH_LONG).show();
             return;
         }
-        String safe = (name == null ? "grafico.png" : name).replaceAll("[^A-Za-z0-9_.-]", "_");
-        try {
-            DownloadManager.Request r = new DownloadManager.Request(Uri.parse(url));
-            r.addRequestHeader("User-Agent", Net.UA);
-            r.setTitle(safe);
-            r.setDescription("Indici Meteo");
-            r.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            r.setDestinationInExternalPublicDir(Environment.DIRECTORY_PICTURES, "IndiciMeteo/" + safe);
-            DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
-            dm.enqueue(r);
-            Toast.makeText(this, "Salvo in Immagini/IndiciMeteo", Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "Download non riuscito: " + e.getClass().getSimpleName(), Toast.LENGTH_LONG).show();
+        final String ua = web.getSettings().getUserAgentString();
+        String ck = null;
+        try { ck = android.webkit.CookieManager.getInstance().getCookie(url); } catch (Exception ignored) { }
+        final String cookie = ck;
+        Toast.makeText(this, "Scarico il grafico…", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String msg;
+            try {
+                Uri u = Uri.parse(url);
+                Map<String, String> h = new HashMap<>();
+                h.put("User-Agent", ua);
+                h.put("Referer", u.getScheme() + "://" + u.getHost() + "/");
+                h.put("Accept", "image/avif,image/webp,image/png,image/gif,image/jpeg,image/*,*/*;q=0.8");
+                h.put("Cookie", cookie);
+                Net.Result r = Net.getAsBrowser(url, h);
+                String ext = imageExt(r.body);
+                if ((r.code >= 400 || ext == null) && url.contains("?")) { // riprova senza parametri
+                    r = Net.getAsBrowser(url.substring(0, url.indexOf('?')), h);
+                    ext = imageExt(r.body);
+                }
+                if (r.code >= 400) throw new Exception("il sito risponde " + r.code);
+                if (ext == null) throw new Exception("il sito non ha inviato un'immagine");
+                String base = (name == null ? "grafico" : name).replaceAll("\\.(png|gif|jpe?g|webp)$", "").replaceAll("[^A-Za-z0-9_.-]", "_");
+                saveToPictures(base + "." + ext, ext, r.body);
+                msg = "Grafico salvato in Immagini/IndiciMeteo";
+            } catch (Exception e) {
+                msg = "Download non riuscito: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            }
+            final String m = msg;
+            runOnUiThread(() -> Toast.makeText(MainActivity.this, m, Toast.LENGTH_LONG).show());
+        }).start();
+    }
+
+    static String imageExt(byte[] b) {
+        if (b == null || b.length < 12) return null;
+        if ((b[0] & 0xFF) == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G') return "png";
+        if (b[0] == 'G' && b[1] == 'I' && b[2] == 'F') return "gif";
+        if ((b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xD8) return "jpg";
+        if (b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P') return "webp";
+        return null;
+    }
+
+    void saveToPictures(String file, String ext, byte[] data) throws Exception {
+        String mime = "jpg".equals(ext) ? "image/jpeg" : "image/" + ext;
+        if (Build.VERSION.SDK_INT >= 29) {
+            android.content.ContentValues v = new android.content.ContentValues();
+            v.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, file);
+            v.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mime);
+            v.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/IndiciMeteo");
+            v.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1);
+            android.content.ContentResolver cr = getContentResolver();
+            Uri item = cr.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+            if (item == null) throw new Exception("memoria non disponibile");
+            try (java.io.OutputStream o = cr.openOutputStream(item)) {
+                if (o == null) throw new Exception("memoria non disponibile");
+                o.write(data);
+            }
+            v.clear();
+            v.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0);
+            cr.update(item, v, null, null);
+        } else {
+            File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "IndiciMeteo");
+            if (!dir.exists() && !dir.mkdirs()) throw new Exception("impossibile creare la cartella");
+            File f = new File(dir, file);
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { o.write(data); }
+            android.media.MediaScannerConnection.scanFile(this, new String[]{f.getAbsolutePath()}, new String[]{mime}, null);
         }
     }
 
@@ -138,9 +198,27 @@ public class MainActivity extends Activity {
         if (route != null) web.evaluateJavascript("location.hash='" + route.replace("'", "") + "'", null);
     }
 
+    private long lastWebCheck = 0;
+
+    /** Controlla in background se su GitHub c'è una versione più recente dell'interfaccia. */
+    void checkWebUpdate(boolean force) {
+        long now = System.currentTimeMillis();
+        if (!force && now - lastWebCheck < 20 * 60 * 1000L) return;
+        lastWebCheck = now;
+        new Thread(() -> {
+            int before = WebUpdater.activeVersion(this);
+            WebUpdater.check(this, v -> runOnUiThread(() ->
+                    web.evaluateJavascript("window.__updateReady && window.__updateReady(" + v + ")", null)));
+            if (force && WebUpdater.activeVersion(this) == before) {
+                runOnUiThread(() -> web.evaluateJavascript("window.__updateNone && window.__updateNone()", null));
+            }
+        }).start();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        checkWebUpdate(false);
         if (web != null) web.evaluateJavascript("window.__androidResume && window.__androidResume()", null);
     }
 
@@ -169,6 +247,12 @@ public class MainActivity extends Activity {
     /** Serve i file dell'interfaccia e fa da proxy verso le fonti dati (evita i blocchi CORS). */
     private class Client extends WebViewClient {
         @Override
+        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
+            if (url != null && url.startsWith(BASE)) view.evaluateJavascript(Firma.script(MainActivity.this), null);
+        }
+
+        @Override
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest req) {
             Uri u = req.getUrl();
             if (!HOST.equals(u.getHost())) return null;
@@ -176,7 +260,10 @@ public class MainActivity extends Activity {
             if (path.equals("/proxy")) return proxy(u.getQueryParameter("u"), u.getQueryParameter("range"));
             if (path.equals("/")) path = "/index.html";
             try {
-                InputStream in = getAssets().open("www" + path);
+                InputStream in;
+                File local = new File(WebUpdater.dir(MainActivity.this), path.substring(1));
+                if (WebUpdater.useLocal(MainActivity.this) && local.exists() && !path.contains("..")) in = new FileInputStream(local);
+                else in = getAssets().open("www" + path);
                 return new WebResourceResponse(mime(path), "utf-8", in);
             } catch (Exception e) {
                 return error(404, "Not found");
@@ -259,6 +346,27 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void saveImage(final String url, final String name) {
             runOnUiThread(() -> downloadImage(url, name));
+        }
+
+        @JavascriptInterface
+        public String webVersion() {
+            return WebUpdater.activeVersion(MainActivity.this) + (WebUpdater.useLocal(MainActivity.this) ? " (scaricata)" : " (inclusa)");
+        }
+
+        @JavascriptInterface
+        public void checkUpdate() {
+            runOnUiThread(() -> checkWebUpdate(true));
+        }
+
+        @JavascriptInterface
+        public void reload() {
+            runOnUiThread(() -> web.reload());
+        }
+
+        @JavascriptInterface
+        public void resetWeb() {
+            WebUpdater.reset(MainActivity.this);
+            runOnUiThread(() -> web.reload());
         }
 
         @JavascriptInterface

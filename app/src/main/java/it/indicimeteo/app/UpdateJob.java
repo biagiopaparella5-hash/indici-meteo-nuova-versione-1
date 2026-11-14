@@ -25,8 +25,6 @@ public class UpdateJob extends JobService {
 
     // id, nome, url, modalità (tail = scarica e legge l'ultima riga, meta = solo intestazioni), pagina da aprire
     private static final String[][] SOURCES = {
-            {"tele", "NAO giornaliera", CPC + "norm.daily.nao.cdas.z500.19500101_current.csv", "tail", "#/d/nao"},
-            {"gefs", "Previsioni GEFS (NAO/AO/PNA)", CPC + "norm.daily.nao.gefs.z500.120days.csv", "meta", "#/d/nao"},
             {"mjo", "MJO", "https://www.bom.gov.au/clim_data/IDCKGEM000/rmm.74toRealtime.txt", "meta", "#/d/mjo"},
             {"enso", "ENSO – Niño 3.4 settimanale", "https://www.cpc.ncep.noaa.gov/data/indices/wksst9120.for", "meta", "#/d/enso"},
             {"enso", "ENSO – ONI", "https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt", "tail", "#/d/enso"},
@@ -71,7 +69,9 @@ public class UpdateJob extends JobService {
             js.cancel(JOB_ID);
             return;
         }
-        long interval = Math.max(1, p.optInt("intervalH", 3)) * 3600_000L;
+        // controllo frequente (default ogni 30 minuti) così la notifica arriva poco dopo l'uscita del dato;
+        // si scaricano solo pochi KB per fonte
+        long interval = Math.max(15, p.optInt("intervalMin", 30)) * 60_000L;
         JobInfo pending = js.getPendingJob(JOB_ID);
         if (pending != null && pending.getIntervalMillis() == interval) return;
         JobInfo job = new JobInfo.Builder(JOB_ID, new ComponentName(ctx, UpdateJob.class))
@@ -89,6 +89,10 @@ public class UpdateJob extends JobService {
         if (on == null) on = new JSONObject();
         SharedPreferences sp = ctx.getSharedPreferences(PREFS, MODE_PRIVATE);
         int nid = 100;
+
+        if (on.optBoolean("tele", false)) {
+            try { checkTele(ctx, sp); } catch (Exception ignored) { }
+        }
 
         for (String[] s : SOURCES) {
             nid++;
@@ -142,6 +146,46 @@ public class UpdateJob extends JobService {
                     }
                 }
             } catch (Exception ignored) { }
+        }
+    }
+
+    private static final String[][] TELE = {
+            {"NAO", CPC + "norm.daily.nao.cdas.z500.19500101_current.csv"},
+            {"AO", CPC + "norm.daily.ao.cdas.z1000.19500101_current.csv"},
+            {"PNA", CPC + "norm.daily.pna.cdas.z500.19500101_current.csv"}
+    };
+
+    /** Un'unica notifica quando NAO, AO e PNA hanno TUTTI un nuovo valore giornaliero. */
+    static void checkTele(Context ctx, SharedPreferences sp) throws Exception {
+        String minKey = null;
+        StringBuilder txt = new StringBuilder();
+        for (String[] t : TELE) {
+            Net.Result r = Net.get(t[1], "bytes=-3000");
+            if (r.code == 416) r = Net.get(t[1], null);
+            if (r.code >= 400) return;
+            String[] lines = new String(r.body, StandardCharsets.UTF_8).split("\\r?\\n");
+            String key = null; double v = 0;
+            for (int i = lines.length - 1; i >= 0 && key == null; i--) {
+                String[] p = lines[i].trim().split(",");
+                if (p.length >= 4 && p[0].trim().matches("\\d{4}")) {
+                    try {
+                        v = Double.parseDouble(p[3].trim());
+                        key = p[0].trim() + "-" + p2(Integer.parseInt(p[1].trim())) + "-" + p2(Integer.parseInt(p[2].trim()));
+                    } catch (Exception ignored) { }
+                }
+            }
+            if (key == null) return;
+            if (minKey == null || key.compareTo(minKey) < 0) minKey = key;
+            if (txt.length() > 0) txt.append(" · ");
+            txt.append(t[0]).append(' ').append(String.format(Locale.ITALY, "%+.2f", v));
+        }
+        String old = sp.getString("last:teleAll", null);
+        if (old == null || minKey.compareTo(old) > 0) {
+            sp.edit().putString("last:teleAll", minKey).apply();
+            if (old != null) {
+                String d = minKey.substring(8) + "/" + minKey.substring(5, 7) + "/" + minKey.substring(0, 4);
+                Notif.show(ctx, 150, "Aggiornati NAO, AO e PNA", "Valori del " + d + ": " + txt, "#/d/nao");
+            }
         }
     }
 

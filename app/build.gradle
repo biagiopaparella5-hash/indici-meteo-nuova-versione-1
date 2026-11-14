@@ -10,8 +10,8 @@ android {
         applicationId 'it.indicimeteo.app'
         minSdk 24
         targetSdk 34
-        versionCode 8
-        versionName '1.6'
+        versionCode 10
+        versionName '1.8'
     }
 
     // Chiave fissa inclusa nel progetto: così ogni nuova versione si installa

@@ -1,3 +1,4 @@
+/* Indici Meteo — © Biagio Paparella. Tutti i diritti riservati. */
 /* Fonti dati e parser — Indici Meteo
  * Tutte le fonti sono pubbliche e gratuite (NOAA CPC, NOAA PSL, BoM, NOAA SWPC, Open-Meteo).
  * Se una fonte cambia indirizzo basta modificare SRC qui sotto.
